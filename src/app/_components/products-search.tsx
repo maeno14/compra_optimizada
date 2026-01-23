@@ -11,13 +11,14 @@ import {
   } from "~/components/ui/card"
 import { Input } from '~/components/ui/input';
 
-export default function ProductsSearch() {
-    const [searchResults, setSearchResult] = useState([])
-    const client = new MeiliSearch({
+const client = new MeiliSearch({
     host: 'http://192.168.1.34:7700',
     apiKey: '630da5b9-9d2f-4758-bb60-a8d8c0580999',
-    })
-    const index = client.index('productos')
+})
+const index = client.index('productos')
+
+export default function ProductsSearch() {
+    const [searchResults, setSearchResult] = useState([])
     const searchProducts = async (e) => {
         index.search(e.target.value, {limit: 10000}).then((results) => {
             setSearchResult(results.hits)
