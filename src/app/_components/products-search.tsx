@@ -19,7 +19,7 @@ export default function ProductsSearch() {
     })
     const index = client.index('productos')
     const searchProducts = async (e) => {
-        index.search(e.target.value, {limit: 10000}).then((results) => {
+        index.search(e.target.value, {limit: 20}).then((results) => {
             setSearchResult(results.hits)
         });
     };
