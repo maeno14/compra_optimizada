@@ -1,5 +1,7 @@
-"use client";
-import { useState, useRef, useCallback } from 'react';
+"use client"
+import { MeiliSearch } from 'meilisearch'
+import { useState } from 'react';
+import { useDebouncedCallback } from 'use-debounce';
 import {
     Card,
     CardContent,
@@ -10,90 +12,31 @@ import {
 } from "~/components/ui/card";
 import { Input } from '~/components/ui/input';
 
-const SEARCH_LIMIT = 50;
-
-// Simple debounce function
-function debounce(func, delay) {
-  let timeout;
-  return function(...args) {
-    const context = this;
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(context, args), delay);
-  };
+interface Product {
+    id: string | number;
+    marca: string;
+    nombre: string;
+    category: string;
+    precio_descuento: number | string;
+    url: string;
+    precio_por: string | number;
 }
 
-
 export default function ProductsSearch() {
-    const [searchResults, setSearchResult] = useState([]);
-    const [offset, setOffset] = useState(0);
-    const [hasMore, setHasMore] = useState(true);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [query, setQuery] = useState("");
-
-    const fetchProducts = useCallback(async (currentQuery, currentOffset) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const response = await fetch(`/api/search?query=${currentQuery}&limit=${SEARCH_LIMIT}&offset=${currentOffset}`);
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Network response was not ok');
-            }
-            const results = await response.json();
-
-            if (currentOffset === 0) {
-                setSearchResult(results.hits);
-            } else {
-                setSearchResult(prevResults => [...prevResults, ...results.hits]);
-            }
-
-            setHasMore(results.hits.length === SEARCH_LIMIT);
-            setOffset(currentOffset + results.hits.length);
-
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to fetch products. Please try again later.');
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    const searchProducts = useCallback((newQuery) => {
-        setQuery(newQuery);
-        setSearchResult([]);
-        setOffset(0);
-        setHasMore(true);
-        fetchProducts(newQuery, 0);
-    }, [fetchProducts]);
-
-    const loadMoreProducts = useCallback(() => {
-        if (!hasMore || loading) return;
-        fetchProducts(query, offset);
-    }, [fetchProducts, query, offset, hasMore, loading]);
-
-    const observer = useRef();
-    const lastProductElementRef = useCallback(node => {
-        if (loading) return;
-        if (observer.current) observer.current.disconnect();
-        observer.current = new IntersectionObserver(entries => {
-            if (entries[0].isIntersecting && hasMore) {
-                loadMoreProducts();
-            }
-        });
-        if (node) observer.current.observe(node);
-    }, [loading, hasMore, loadMoreProducts]);
-
-
-    const debouncedSearch = useCallback(debounce(searchProducts, 300), [searchProducts]);
-
-    const handleInputChange = (e) => {
-        debouncedSearch(e.target.value);
-    }
+    const [searchResults, setSearchResult] = useState<Product[]>([])
+    const client = new MeiliSearch({
+    host: 'http://192.168.1.34:7700',
+    apiKey: '630da5b9-9d2f-4758-bb60-a8d8c0580999',
+    })
+    const index = client.index<Product>('productos')
+    const searchProducts = useDebouncedCallback(async (value: string) => {
+        const results = await index.search(value, { limit: 10000 });
+        setSearchResult(results.hits)
+    }, 300);
 
     return (
         <div className="space-y-4">
-            <Input type="text" placeholder='Escribi para buscar productos a precios competitivos' onChange={handleInputChange} style={{ color: 'black' }} />
-            {error && <p className="text-red-500">{error}</p>}
+            <Input type="text" placeholder='Escribi para buscar productos a precios competitivos' onChange={(e)=> searchProducts(e.target.value)} style={{ color: 'black' }}/>
             <div className="space-y-4">
                 <div>
                     <p>Se obtuvo {searchResults.length} productos</p>
