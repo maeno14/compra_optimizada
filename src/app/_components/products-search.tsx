@@ -1,6 +1,6 @@
 "use client"
 import { MeiliSearch } from 'meilisearch'
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
     Card,
     CardContent,
@@ -8,12 +8,10 @@ import {
     CardFooter,
     CardHeader,
     CardTitle,
-  } from "~/components/ui/card"
+} from "~/components/ui/card"
 import { Input } from '~/components/ui/input';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import { useDebouncedCallback } from 'use-debounce';
-
 interface Product {
     id: string | number;
     marca: string;
@@ -24,18 +22,18 @@ interface Product {
     precio_por: string | number;
 }
 
+const client = new MeiliSearch({
+    host: 'http://192.168.1.34:7700',
+    apiKey: '630da5b9-9d2f-4758-bb60-a8d8c0580999',
+})
+const index = client.index<Product>('productos')
+
 export default function ProductsSearch() {
     const [searchResults, setSearchResult] = useState<Product[]>([])
-    const client = new MeiliSearch({
-        host: 'http://192.168.1.34:7700',
-        apiKey: '630da5b9-9d2f-4758-bb60-a8d8c0580999',
-    })
-    const index = client.index('productos')
 
-    const searchProducts = useDebouncedCallback((value: string) => {
-        index.search(value, {limit: 10000}).then((results) => {
-            setSearchResult(results.hits as unknown as Product[])
-        });
+    const searchProducts = useDebouncedCallback(async (value: string) => {
+        const results = await index.search(value, { limit: 10000 });
+        setSearchResult(results.hits)
     }, 300);
 
     const Row = ({ index, style }: { index: number, style: React.CSSProperties }) => {
@@ -68,7 +66,7 @@ export default function ProductsSearch() {
             <Input
                 type="text"
                 placeholder='Escribi para buscar productos a precios competitivos'
-                onChange={(e)=> searchProducts(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => searchProducts(e.target.value)}
                 style={{ color: 'black' }}
             />
             <div className="space-y-4">
@@ -77,7 +75,7 @@ export default function ProductsSearch() {
                 </div>
                 <div style={{ height: '600px' }}>
                     <AutoSizer>
-                        {({ height, width }) => (
+                        {({ height, width }: { height: number; width: number }) => (
                             <List
                                 height={height}
                                 itemCount={searchResults.length}
