@@ -24,8 +24,8 @@ export const env = createEnv({
     ),
     DISCORD_CLIENT_ID: z.string(),
     DISCORD_CLIENT_SECRET: z.string(),
-    MEILISEARCH_HOST: z.string().url(),
-    MEILISEARCH_API_KEY: z.string(),
+    MEILISEARCH_HOST: z.string().url().optional(),
+    MEILISEARCH_API_KEY: z.string().optional(),
   },
 
   /**

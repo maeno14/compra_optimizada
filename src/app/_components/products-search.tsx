@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
     Card,
     CardContent,
@@ -31,25 +31,14 @@ export default function ProductsSearch() {
     const [error, setError] = useState(null);
     const [query, setQuery] = useState("");
 
-    const observer = useRef();
-    const lastProductElementRef = useCallback(node => {
-        if (loading) return;
-        if (observer.current) observer.current.disconnect();
-        observer.current = new IntersectionObserver(entries => {
-            if (entries[0].isIntersecting && hasMore) {
-                loadMoreProducts();
-            }
-        });
-        if (node) observer.current.observe(node);
-    }, [loading, hasMore]);
-
-    const fetchProducts = async (currentQuery, currentOffset) => {
+    const fetchProducts = useCallback(async (currentQuery, currentOffset) => {
         setLoading(true);
         setError(null);
         try {
             const response = await fetch(`/api/search?query=${currentQuery}&limit=${SEARCH_LIMIT}&offset=${currentOffset}`);
             if (!response.ok) {
-                throw new Error('Network response was not ok');
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Network response was not ok');
             }
             const results = await response.json();
 
@@ -63,26 +52,39 @@ export default function ProductsSearch() {
             setOffset(currentOffset + results.hits.length);
 
         } catch (err) {
-            setError('Failed to fetch products. Please try again later.');
+            setError(err instanceof Error ? err.message : 'Failed to fetch products. Please try again later.');
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
-    const searchProducts = (newQuery) => {
+    const searchProducts = useCallback((newQuery) => {
         setQuery(newQuery);
         setSearchResult([]);
         setOffset(0);
         setHasMore(true);
         fetchProducts(newQuery, 0);
-    };
+    }, [fetchProducts]);
 
-    const loadMoreProducts = () => {
+    const loadMoreProducts = useCallback(() => {
         if (!hasMore || loading) return;
         fetchProducts(query, offset);
-    };
+    }, [fetchProducts, query, offset, hasMore, loading]);
 
-    const debouncedSearch = useCallback(debounce(searchProducts, 300), []);
+    const observer = useRef();
+    const lastProductElementRef = useCallback(node => {
+        if (loading) return;
+        if (observer.current) observer.current.disconnect();
+        observer.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && hasMore) {
+                loadMoreProducts();
+            }
+        });
+        if (node) observer.current.observe(node);
+    }, [loading, hasMore, loadMoreProducts]);
+
+
+    const debouncedSearch = useCallback(debounce(searchProducts, 300), [searchProducts]);
 
     const handleInputChange = (e) => {
         debouncedSearch(e.target.value);
