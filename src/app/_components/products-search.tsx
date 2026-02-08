@@ -1,6 +1,5 @@
-"use client"
-import { MeiliSearch } from 'meilisearch'
-import React, { useState } from 'react';
+"use client";
+import { useState, useRef, useCallback } from 'react';
 import {
     Card,
     CardContent,
@@ -8,85 +7,119 @@ import {
     CardFooter,
     CardHeader,
     CardTitle,
-} from "~/components/ui/card"
+} from "~/components/ui/card";
 import { Input } from '~/components/ui/input';
-import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
-interface Product {
-    id: string | number;
-    marca: string;
-    nombre: string;
-    category: string;
-    precio_descuento: number | string;
-    url: string;
-    precio_por: string | number;
+
+const SEARCH_LIMIT = 50;
+
+// Simple debounce function
+function debounce(func, delay) {
+  let timeout;
+  return function(...args) {
+    const context = this;
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(context, args), delay);
+  };
 }
 
-const client = new MeiliSearch({
-    host: 'http://192.168.1.34:7700',
-    apiKey: '630da5b9-9d2f-4758-bb60-a8d8c0580999',
-})
-const index = client.index<Product>('productos')
 
 export default function ProductsSearch() {
-    const [searchResults, setSearchResult] = useState<Product[]>([])
+    const [searchResults, setSearchResult] = useState([]);
+    const [offset, setOffset] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [query, setQuery] = useState("");
 
-    const searchProducts = useDebouncedCallback(async (value: string) => {
-        const results = await index.search(value, { limit: 10000 });
-        setSearchResult(results.hits)
-    }, 300);
+    const fetchProducts = useCallback(async (currentQuery, currentOffset) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const response = await fetch(`/api/search?query=${currentQuery}&limit=${SEARCH_LIMIT}&offset=${currentOffset}`);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Network response was not ok');
+            }
+            const results = await response.json();
 
-    const Row = ({ index, style }: { index: number, style: React.CSSProperties }) => {
-        const product = searchResults[index];
-        if (!product) return null;
+            if (currentOffset === 0) {
+                setSearchResult(results.hits);
+            } else {
+                setSearchResult(prevResults => [...prevResults, ...results.hits]);
+            }
 
-        return (
-            <div style={style}>
-                <div className="h-[95%] w-full pr-2">
-                    <Card className="h-full">
-                        <CardHeader>
-                            <CardTitle className="truncate">{product.marca} - {product.nombre}</CardTitle>
-                            <CardDescription>Categoria: {product.category}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <p>Precio: {product.precio_descuento}</p>
-                            <p className="truncate">Stock: {product.url}</p>
-                        </CardContent>
-                        <CardFooter>
-                            <p>Precio por unidad: {product.precio_por}</p>
-                        </CardFooter>
-                    </Card>
-                </div>
-            </div>
-        );
-    };
+            setHasMore(results.hits.length === SEARCH_LIMIT);
+            setOffset(currentOffset + results.hits.length);
+
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to fetch products. Please try again later.');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const searchProducts = useCallback((newQuery) => {
+        setQuery(newQuery);
+        setSearchResult([]);
+        setOffset(0);
+        setHasMore(true);
+        fetchProducts(newQuery, 0);
+    }, [fetchProducts]);
+
+    const loadMoreProducts = useCallback(() => {
+        if (!hasMore || loading) return;
+        fetchProducts(query, offset);
+    }, [fetchProducts, query, offset, hasMore, loading]);
+
+    const observer = useRef();
+    const lastProductElementRef = useCallback(node => {
+        if (loading) return;
+        if (observer.current) observer.current.disconnect();
+        observer.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && hasMore) {
+                loadMoreProducts();
+            }
+        });
+        if (node) observer.current.observe(node);
+    }, [loading, hasMore, loadMoreProducts]);
+
+
+    const debouncedSearch = useCallback(debounce(searchProducts, 300), [searchProducts]);
+
+    const handleInputChange = (e) => {
+        debouncedSearch(e.target.value);
+    }
 
     return (
         <div className="space-y-4">
-            <Input
-                type="text"
-                placeholder='Escribi para buscar productos a precios competitivos'
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => searchProducts(e.target.value)}
-                style={{ color: 'black' }}
-            />
+            <Input type="text" placeholder='Escribi para buscar productos a precios competitivos' onChange={handleInputChange} style={{ color: 'black' }} />
+            {error && <p className="text-red-500">{error}</p>}
             <div className="space-y-4">
                 <div>
                     <p>Se obtuvo {searchResults.length} productos</p>
                 </div>
-                <div style={{ height: '600px' }}>
-                    <AutoSizer>
-                        {({ height, width }: { height: number; width: number }) => (
-                            <List
-                                height={height}
-                                itemCount={searchResults.length}
-                                itemSize={250}
-                                width={width}
-                            >
-                                {Row}
-                            </List>
-                        )}
-                    </AutoSizer>
-                </div>
+                {searchResults.map((product, index) => {
+                    const isLastElement = searchResults.length === index + 1;
+                    return (
+                        <div key={product.id} ref={isLastElement ? lastProductElementRef : null}>
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>{product.marca} - {product.nombre}</CardTitle>
+                                    <CardDescription>Categoria: {product.category}</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <p>Precio: {product.precio_descuento}</p>
+                                    <p>Stock: {product.url}</p>
+                                </CardContent>
+                                <CardFooter>
+                                    <p>Precio por unidad: {product.precio_por}</p>
+                                </CardFooter>
+                            </Card>
+                        </div>
+                    );
+                })}
+                 {loading && <p>Loading...</p>}
+                 {!hasMore && searchResults.length > 0 && <p>You've reached the end of the results.</p>}
             </div>
         </div>
     );
